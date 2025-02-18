@@ -17,6 +17,7 @@ class ChatClient:
 
         # Champ pour taper les messages
         self.message_entry = tk.Entry(root, width=40)
+        self.message_entry.bind("<Return>", lambda event: self.send_message())
         self.message_entry.grid(row=1, column=0, padx=10, pady=10)
 
         # Bouton d'envoi
