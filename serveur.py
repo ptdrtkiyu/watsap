@@ -1,16 +1,63 @@
 import socket
 import threading
+import logging
+import itertools
 
-# Paramètres du serveur
+# Configuration du logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 HOST = '127.0.0.1'
 PORT = 12345
-clients = {}  # Stocke les clients avec leur username
+clients = {}
+
+# Chiffrement César
+def cesar(text, shift=3):
+    result = ""
+    for char in text:
+        if char.isalpha():
+            shift_amount = shift if char.islower() else shift % 26
+            new_char = chr((ord(char) - ord('a' if char.islower() else 'A') + shift_amount) % 26 + ord('a' if char.islower() else 'A'))
+            result += new_char
+        else:
+            result += char
+    return result
+
+# Déchiffrement César
+def cesar_decrypt(text, shift=3):
+    return cesar(text, -shift)
+
+# Chiffrement Vigenère
+def vigenere(text, key="SECRET"):
+    result = []
+    key_iter = itertools.cycle(key)
+    for char in text:
+        if char.isalpha():
+            shift = ord(next(key_iter).upper()) - ord('A')
+            new_char = cesar(char, shift)
+            result.append(new_char)
+        else:
+            result.append(char)
+    return "".join(result)
+
+# Déchiffrement Vigenère
+def vigenere_decrypt(text, key="SECRET"):
+    result = []
+    key_iter = itertools.cycle(key)
+    for char in text:
+        if char.isalpha():
+            shift = -(ord(next(key_iter).upper()) - ord('A'))
+            new_char = cesar(char, shift)
+            result.append(new_char)
+        else:
+            result.append(char)
+    return "".join(result)
 
 def broadcast(message):
     """Envoie un message à tous les clients"""
+    encrypted_message = vigenere(message)  # Chiffrement avant envoi
     for client_socket in list(clients.keys()):
         try:
-            client_socket.send(message.encode())
+            client_socket.send(encrypted_message.encode())
         except:
             client_socket.close()
             del clients[client_socket]
@@ -18,35 +65,34 @@ def broadcast(message):
 def handle_client(client_socket):
     """Gère la communication avec un client"""
     try:
-        # Récupère le nom d'utilisateur
-        username = client_socket.recv(1024).decode()
+        encrypted_username = client_socket.recv(1024).decode()
+        username = vigenere_decrypt(encrypted_username)
         clients[client_socket] = username
-        print(f"{username} a rejoint le chat.")
+        logging.info(f"{username} a rejoint le chat.")
         broadcast(f"{username} a rejoint le chat.")
 
         while True:
-            message = client_socket.recv(1024).decode()
-            if not message:
+            encrypted_message = client_socket.recv(1024).decode()
+            if not encrypted_message:
                 break
-            full_message = f"{username}: {message}"  # Ajoute le username
-            print(full_message)
-            broadcast(full_message)  # Envoie à tous
+            logging.info(f"Message chiffré reçu de {username}: {encrypted_message}")
+            message = vigenere_decrypt(encrypted_message)  
+            broadcast(message)
+
     except:
         pass
 
-    # Gérer la déconnexion du client
-    print(f"{clients.get(client_socket, 'Un utilisateur')} a quitté le chat.")
+    logging.info(f"{clients.get(client_socket, 'Un utilisateur')} a quitté le chat.")
     broadcast(f"{clients.get(client_socket, 'Un utilisateur')} a quitté le chat.")
     del clients[client_socket]
     client_socket.close()
 
-# Lancer le serveur
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_socket.bind((HOST, PORT))
 server_socket.listen(5)
-print(f"Serveur en écoute sur {HOST}:{PORT}")
+logging.info(f"Serveur en écoute sur {HOST}:{PORT}")
 
 while True:
     client_socket, addr = server_socket.accept()
-    print(f"Nouvelle connexion : {addr}")
+    logging.info(f"Nouvelle connexion : {addr}")
     threading.Thread(target=handle_client, args=(client_socket,)).start()
